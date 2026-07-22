@@ -10,7 +10,6 @@ glyph appears outside phase lines.
 
 Next phase: 10
 
-- Phase 04 ⬜ realizes R-R06Q-Q6EE, R-R1EN-3Y53, R-R2MJ-HPVS, R-R3UF-VHMH — scorer subprocess contract (`internal/scorer`)
 - Phase 05 ⬜ realizes R-QVB5-73FM, R-QWJ1-KV6B, R-QXQX-YMX0, R-QYYU-CENP — case runner with bounded parallelism (`internal/runner`)
 - Phase 06 ⬜ realizes R-RETJ-BFAQ, R-RG1F-P71F, R-RH9C-2YS4, R-RIH8-GQIT — improver bundle and proposal (`internal/improver`)
 - Phase 07 ⬜ realizes R-RJP4-UI9I, R-RM4X-M1QW, R-RNCT-ZTHL, R-ROKQ-DL8A, R-RPSM-RCYZ — run workspace (`internal/workspace`)
