@@ -9,5 +9,3 @@ line and body file — there is no done marker; done is gone. No bare status
 glyph appears outside phase lines.
 
 Next phase: 10
-
-- Phase 09 ⬜ realizes R-RX41-1ZF5, R-RYBX-FR5U, R-RUO8-AFXR, R-RVW4-O7OG — composition root, health log, end-to-end (`internal/app`, `cmd/autotune`)
