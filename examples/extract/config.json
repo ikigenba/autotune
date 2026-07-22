@@ -3,8 +3,7 @@
     "provider": "openai",
     "model": "gpt-5.6-luna",
     "auth": "sub",
-    "effort": "low",
-    "max_tokens": "16384"
+    "effort": "low"
   },
   "improver": {
     "provider": "openai",

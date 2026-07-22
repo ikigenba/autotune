@@ -19,8 +19,9 @@ below that.
 - `score` — python3 scorer; see requirements below.
 - `config.json` — runner openai `gpt-5.6-luna` at low effort, improver
   openai `gpt-5.6-sol`, both `auth=sub` (one subscription login, no model
-  API keys). Note: no temperature pin — the subscription backend rejects
-  one; the epsilon noise floor absorbs the variance. This diverges from
+  API keys). Note: no temperature or max_tokens pins — the subscription
+  backend rejects both (400 "Unsupported parameter"); the epsilon noise
+  floor absorbs the variance. This diverges from
   the workbench's historical eval config (anthropic `claude-sonnet-4-6`,
   temperature 0), so scores are not directly comparable to the reference
   numbers below.
