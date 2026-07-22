@@ -1,3 +1,7 @@
+---
+harness: claude
+model: claude-opus-4-8
+---
 # Verify
 
 You are the **verify** step of autotune's build loop. You are invoked with a

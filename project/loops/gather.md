@@ -1,3 +1,7 @@
+---
+harness: claude
+model: claude-sonnet-5
+---
 # Gather
 
 You are the **gather** step of autotune's build loop. You are invoked with a

@@ -1,3 +1,7 @@
+---
+harness: codex
+model: gpt-5.6-sol
+---
 # Build
 
 You are the **build** step of autotune's build loop. You are invoked with a
