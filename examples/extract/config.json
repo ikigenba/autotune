@@ -1,0 +1,15 @@
+{
+  "runner": {
+    "provider": "openai",
+    "model": "gpt-5.6-luna",
+    "auth": "sub",
+    "effort": "low",
+    "max_tokens": "16384"
+  },
+  "improver": {
+    "provider": "openai",
+    "model": "gpt-5.6-sol",
+    "auth": "sub",
+    "effort": "high"
+  }
+}

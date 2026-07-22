@@ -1,0 +1,13 @@
+Extract subjects and claims from the source text.
+
+Return JSON with shape {"subjects":[{"type":"entity|event|concept","kind":"...","name":"...","occurred_at":"...","claims":["..."]}]}.
+Use only the source text and document header; do not infer unstated facts.
+
+A subject is a person, organization, place, product, event, or concept the
+text is about. For each subject, write its claims as short prose statements.
+
+type must be one of "entity", "event", or "concept"; kind is a concise
+lowercase category such as "person" or "company"; occurred_at, when present,
+must be an ISO-8601 prefix (YYYY, YYYY-MM, or YYYY-MM-DD) and is required
+for events; kind and name must be non-empty; each subject needs at least one
+non-empty claim.
