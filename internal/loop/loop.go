@@ -72,6 +72,7 @@ type Deps struct {
 	Workspace    Store
 	Now          func() time.Time
 	Out          io.Writer
+	Err          io.Writer
 }
 
 // Run executes one complete tuning invocation. All stop paths converge on
@@ -84,6 +85,9 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 	if deps.Out == nil {
 		deps.Out = io.Discard
 	}
+	if deps.Err == nil {
+		deps.Err = io.Discard
+	}
 	start := deps.Now()
 	winner := ""
 	totalCost := agentkit.Cost(0)
@@ -94,6 +98,10 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 		out.StopReason = reason
 		exit = code
 	}
+	failErr := func(reason string, code int, err error) {
+		fmt.Fprintln(deps.Err, err)
+		fail(reason, code)
+	}
 	if f == nil || cfg == nil || deps.RunnerConv == nil || deps.ImproverConv == nil || deps.Scorer == nil || deps.Workspace == nil {
 		fail("internal failure", ExitFailure)
 		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
@@ -103,7 +111,7 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
 	}
 	if err := deps.Workspace.WriteConfigStamp(cfg); err != nil {
-		fail("internal failure", ExitFailure)
+		failErr("internal failure", ExitFailure, err)
 		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
 	}
 
@@ -112,7 +120,7 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 	for range opts.Repeat {
 		ev, err := runner.Evaluate(ctx, deps.RunnerConv, deps.Scorer, f.Prompt, f.Dev, opts.Parallel)
 		if err != nil {
-			fail(contextStop(ctx, err), contextExit(ctx, err))
+			failErr(contextStop(ctx, err), contextExit(ctx, err), err)
 			return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
 		}
 		totalCost += ev.Cost
@@ -127,7 +135,7 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 	out.Best = out.Baseline
 	winner = f.Prompt
 	if err := deps.Workspace.WriteBaseline(composites, out.Baseline, out.Epsilon); err != nil {
-		fail("internal failure", ExitFailure)
+		failErr("internal failure", ExitFailure, err)
 		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
 	}
 
@@ -168,12 +176,12 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 		summary, candidate, err := improver.Propose(ctx, tracked, f.ImproveMD, evidence, opts.MaxRetries)
 		totalCost += improverCost()
 		if err != nil {
-			fail(contextStop(ctx, err), contextExit(ctx, err))
+			failErr(contextStop(ctx, err), contextExit(ctx, err), err)
 			break
 		}
 		ev, err := runner.Evaluate(ctx, deps.RunnerConv, deps.Scorer, candidate, f.Dev, opts.Parallel)
 		if err != nil {
-			fail(contextStop(ctx, err), contextExit(ctx, err))
+			failErr(contextStop(ctx, err), contextExit(ctx, err), err)
 			break
 		}
 		totalCost += ev.Cost
@@ -181,16 +189,16 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 		attempt := improver.Attempt{Summary: summary, Composite: ev.Composite, Accepted: accepted}
 		history = append(history, attempt)
 		if err := deps.Workspace.WriteCandidate(iterations, candidate, ev); err != nil {
-			fail("internal failure", ExitFailure)
+			failErr("internal failure", ExitFailure, err)
 			break
 		}
 		if err := deps.Workspace.AppendHistory(historyLine(iterations, attempt)); err != nil {
-			fail("internal failure", ExitFailure)
+			failErr("internal failure", ExitFailure, err)
 			break
 		}
 		if accepted {
 			if err := deps.Workspace.PromoteBest(iterations); err != nil {
-				fail("internal failure", ExitFailure)
+				failErr("internal failure", ExitFailure, err)
 				break
 			}
 			winner = candidate
@@ -247,6 +255,7 @@ func finalize(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Conf
 	if out.Accepted > 0 && f != nil && len(f.Holdout) > 0 {
 		ev, err := runner.Evaluate(context.WithoutCancel(ctx), deps.RunnerConv, deps.Scorer, winner, f.Holdout, 1)
 		if err != nil {
+			fmt.Fprintln(deps.Err, err)
 			out.StopReason = "internal failure"
 			exit = ExitFailure
 		} else {
@@ -267,6 +276,7 @@ func finalize(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Conf
 		Baseline: out.Baseline, Epsilon: out.Epsilon, Best: out.Best,
 		Accepted: out.Accepted, Holdout: out.Holdout, Verdict: out.Verdict, StopReason: out.StopReason,
 	}, diff); err != nil {
+		fmt.Fprintln(deps.Err, err)
 		out.StopReason = "internal failure"
 		exit = ExitFailure
 	}

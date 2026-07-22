@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,7 @@ type scriptedProvider struct {
 	mu      sync.Mutex
 	outputs []string
 	index   int
+	err     error
 }
 
 func (p *scriptedProvider) Name() string { return "scripted" }
@@ -25,6 +27,9 @@ func (p *scriptedProvider) Name() string { return "scripted" }
 func (p *scriptedProvider) RoundTrip(_ context.Context, req *agentkit.Request) *agentkit.RoundTrip {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.err != nil {
+		return agentkit.NewRoundTrip(agentkit.Message{}, agentkit.FinishOther, agentkit.Usage{}, nil, p.err, 0, false)
+	}
 	text := "bad"
 	if p.index < len(p.outputs) {
 		text = p.outputs[p.index]
@@ -152,5 +157,48 @@ func TestRunTerminalRenderingHonorsTTYAndNoColor(t *testing.T) {
 	}
 	if strings.Contains(plain.stdout, "\r") || !strings.Contains(tty.stdout, "\r") {
 		t.Fatalf("ticker rendering mismatch: plain=%q tty=%q", plain.stdout, tty.stdout)
+	}
+}
+
+func TestRunRoutesLoopFailureCauseToStderr(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "tune")
+	var stdout, stderr bytes.Buffer
+	deps := Deps{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Getenv: func(string) string { return "" },
+		Now:    func() time.Time { return time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC) },
+		Home:   t.TempDir(),
+	}
+	if code := Run(context.Background(), deps, []string{"--init", root}); code != 0 {
+		t.Fatalf("init exit = %d, stderr = %q", code, stderr.String())
+	}
+	for name, body := range map[string]string{
+		"prompt.txt":                  "incumbent\n",
+		"improve.md":                  "Improve it.\n",
+		"cases/dev/example/input.txt": "input\n",
+	} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scorePath := filepath.Join(root, "score")
+	if err := os.WriteFile(scorePath, []byte("#!/bin/sh\nprintf '{\\\"score\\\":0.5}\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cause := "provider exploded"
+	deps.NewProvider = func(config.Section, string) (*agentkit.Conversation, error) {
+		return &agentkit.Conversation{Provider: &scriptedProvider{err: errors.New(cause)}, Model: "test"}, nil
+	}
+	stderr.Reset()
+	if code := Run(context.Background(), deps, []string{"--repeat=1", root}); code != 1 {
+		t.Fatalf("exit = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), cause) {
+		t.Fatalf("stderr = %q, want cause %q", stderr.String(), cause)
 	}
 }

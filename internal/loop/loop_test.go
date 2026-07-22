@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -155,13 +156,70 @@ func TestRunWithNoAcceptsSkipsHoldoutAndReportsHonestly(t *testing.T) {
 	}
 }
 
+func TestRunWritesEveryFailureCauseToErr(t *testing.T) {
+	// R-E50H-F4MC
+	cause := errors.New("distinct failure cause")
+	tests := []struct {
+		name  string
+		setup func(*harness)
+	}{
+		{
+			name: "baseline evaluation",
+			setup: func(h *harness) {
+				h.runner.replies = []reply{{err: cause}}
+			},
+		},
+		{
+			name: "improver",
+			setup: func(h *harness) {
+				h.improver.replies = []reply{{err: cause}}
+			},
+		},
+		{
+			name: "candidate evaluation",
+			setup: func(h *harness) {
+				h.runner.replies = []reply{{text: "0.5"}, {err: cause}}
+			},
+		},
+		{
+			name: "workspace write",
+			setup: func(h *harness) {
+				h.store.writeCandidateErr = cause
+			},
+		},
+		{
+			name: "holdout evaluation",
+			setup: func(h *harness) {
+				h.runner.replies = []reply{{text: "0.5"}, {text: "0.8"}, {err: cause}}
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			h := newHarness(
+				[]reply{{text: "0.5"}, {text: "0.4"}},
+				[]reply{proposal("candidate", "candidate")},
+			)
+			test.setup(h)
+			out, code := h.run(context.Background(), Options{Repeat: 1, Rails: Rails{MaxIterations: 1}})
+			if code != ExitFailure || out.StopReason != "internal failure" {
+				t.Fatalf("outcome = %+v, code = %d", out, code)
+			}
+			if got := h.errOutput.String(); !strings.Contains(got, cause.Error()) {
+				t.Fatalf("stderr = %q, want cause %q", got, cause)
+			}
+		})
+	}
+}
+
 type harness struct {
-	deps     Deps
-	folder   *folder.Folder
-	store    *fakeStore
-	runner   *scriptedProvider
-	improver *scriptedProvider
-	output   *bytes.Buffer
+	deps      Deps
+	folder    *folder.Folder
+	store     *fakeStore
+	runner    *scriptedProvider
+	improver  *scriptedProvider
+	output    *bytes.Buffer
+	errOutput *bytes.Buffer
 }
 
 func newHarness(runnerReplies, improverReplies []reply) *harness {
@@ -169,6 +227,7 @@ func newHarness(runnerReplies, improverReplies []reply) *harness {
 	improverProvider := &scriptedProvider{replies: improverReplies}
 	store := &fakeStore{}
 	output := &bytes.Buffer{}
+	errOutput := &bytes.Buffer{}
 	return &harness{
 		deps: Deps{
 			RunnerConv:   newConversation(runnerProvider),
@@ -177,6 +236,7 @@ func newHarness(runnerReplies, improverReplies []reply) *harness {
 			Workspace:    store,
 			Now:          func() time.Time { return time.Unix(100, 0) },
 			Out:          output,
+			Err:          errOutput,
 		},
 		folder: &folder.Folder{
 			Prompt:    "incumbent",
@@ -184,7 +244,7 @@ func newHarness(runnerReplies, improverReplies []reply) *harness {
 			Dev:       []folder.Case{{Name: "dev", Dir: "dev", Input: "input"}},
 			Holdout:   []folder.Case{{Name: "holdout", Dir: "holdout", Input: "input"}},
 		},
-		store: store, runner: runnerProvider, improver: improverProvider, output: output,
+		store: store, runner: runnerProvider, improver: improverProvider, output: output, errOutput: errOutput,
 	}
 }
 
@@ -252,6 +312,7 @@ type fakeStore struct {
 	promoted           []int
 	summary            *workspace.Summary
 	diff               string
+	writeCandidateErr  error
 }
 
 func (s *fakeStore) WriteConfigStamp(*config.Config) error { return nil }
@@ -260,6 +321,9 @@ func (s *fakeStore) WriteBaseline(composites []float64, _, _ float64) error {
 	return nil
 }
 func (s *fakeStore) WriteCandidate(_ int, _ string, ev *runner.EvalResult) error {
+	if s.writeCandidateErr != nil {
+		return s.writeCandidateErr
+	}
 	s.candidates = append(s.candidates, ev)
 	return nil
 }

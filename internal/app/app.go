@@ -88,6 +88,7 @@ func Run(ctx context.Context, deps Deps, args []string) int {
 		},
 		Scorer:    scorer.New(f.ScorePath, f.Root),
 		Out:       deps.Stdout,
+		Err:       deps.Stderr,
 		Now:       deps.Now,
 		Workspace: store,
 	}, f, cfg, loop.Options{
