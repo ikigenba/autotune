@@ -10,7 +10,6 @@ glyph appears outside phase lines.
 
 Next phase: 10
 
-- Phase 01 ⬜ realizes R-RR0J-54PO, R-RS8F-IWGD, R-RTGB-WO72 — repo scaffold and CLI parsing (`internal/cli`)
 - Phase 02 ⬜ realizes R-QMRU-IP8R, R-QNZQ-WGZG, R-QQFJ-O0GU, R-QRNG-1S7J, R-QSVC-FJY8, R-QU38-TBOX — config resolution (`internal/config`)
 - Phase 03 ⬜ realizes R-QFGG-82SL, R-QGOC-LUJA, R-QHW8-ZM9Z, R-QJ45-DE0O, R-QKC1-R5RD, R-QLJY-4XI2 — tune-folder load and `--init` scaffold (`internal/folder`)
 - Phase 04 ⬜ realizes R-R06Q-Q6EE, R-R1EN-3Y53, R-R2MJ-HPVS, R-R3UF-VHMH — scorer subprocess contract (`internal/scorer`)
