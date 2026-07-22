@@ -10,7 +10,6 @@ glyph appears outside phase lines.
 
 Next phase: 10
 
-- Phase 03 ⬜ realizes R-QFGG-82SL, R-QGOC-LUJA, R-QHW8-ZM9Z, R-QJ45-DE0O, R-QKC1-R5RD, R-QLJY-4XI2 — tune-folder load and `--init` scaffold (`internal/folder`)
 - Phase 04 ⬜ realizes R-R06Q-Q6EE, R-R1EN-3Y53, R-R2MJ-HPVS, R-R3UF-VHMH — scorer subprocess contract (`internal/scorer`)
 - Phase 05 ⬜ realizes R-QVB5-73FM, R-QWJ1-KV6B, R-QXQX-YMX0, R-QYYU-CENP — case runner with bounded parallelism (`internal/runner`)
 - Phase 06 ⬜ realizes R-RETJ-BFAQ, R-RG1F-P71F, R-RH9C-2YS4, R-RIH8-GQIT — improver bundle and proposal (`internal/improver`)
