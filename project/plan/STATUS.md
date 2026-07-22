@@ -10,7 +10,6 @@ glyph appears outside phase lines.
 
 Next phase: 10
 
-- Phase 06 ⬜ realizes R-RETJ-BFAQ, R-RG1F-P71F, R-RH9C-2YS4, R-RIH8-GQIT — improver bundle and proposal (`internal/improver`)
 - Phase 07 ⬜ realizes R-RJP4-UI9I, R-RM4X-M1QW, R-RNCT-ZTHL, R-ROKQ-DL8A, R-RPSM-RCYZ — run workspace (`internal/workspace`)
 - Phase 08 ⬜ realizes R-R52C-99D6, R-R7I5-0SUK, R-R8Q1-EKL9, R-R9XX-SCBY, R-RB5U-642N, R-RCDQ-JVTC, R-RDLM-XNK1 — tuning loop engine (`internal/loop`)
 - Phase 09 ⬜ realizes R-RX41-1ZF5, R-RYBX-FR5U, R-RUO8-AFXR, R-RVW4-O7OG — composition root, health log, end-to-end (`internal/app`, `cmd/autotune`)
