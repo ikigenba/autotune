@@ -17,7 +17,7 @@ whenever a Decision is added or its Verification ids change.
   R-R06Q-Q6EE, R-R1EN-3Y53, R-R2MJ-HPVS, R-R3UF-VHMH
 - D5 → `D05.md` — Tuning loop: baseline, epsilon acceptance, rails,
   finalize — R-R52C-99D6, R-R7I5-0SUK, R-R8Q1-EKL9, R-R9XX-SCBY,
-  R-RB5U-642N, R-RCDQ-JVTC, R-RDLM-XNK1
+  R-RB5U-642N, R-RCDQ-JVTC, R-RDLM-XNK1, R-E50H-F4MC
 - D6 → `D06.md` — Improver: fresh-context bare call, evidence bundle —
   R-RETJ-BFAQ, R-RG1F-P71F, R-RH9C-2YS4, R-RIH8-GQIT
 - D7 → `D07.md` — Run workspace: `runs/<id>/`, incumbent never touched —
@@ -29,6 +29,7 @@ whenever a Decision is added or its Verification ids change.
 
 ## Verification ids → Decision
 
+- R-E50H-F4MC → D5 (`D05.md`)
 - R-QFGG-82SL → D1 (`D01.md`)
 - R-QGOC-LUJA → D1 (`D01.md`)
 - R-QHW8-ZM9Z → D1 (`D01.md`)
