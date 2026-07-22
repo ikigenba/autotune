@@ -9,5 +9,3 @@ line and body file — there is no done marker; done is gone. No bare status
 glyph appears outside phase lines.
 
 Next phase: 11
-
-- Phase 10 ⬜ realizes R-E50H-F4MC — surface failure causes on stderr (`internal/loop`, `internal/app`)
