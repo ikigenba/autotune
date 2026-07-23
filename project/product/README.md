@@ -52,6 +52,8 @@ run.
 - Default improver model (proposes revisions): `gpt-5.6-sol`.
 - Both default to subscription authentication, sharing one login file at
   `~/.autotune/auth.json`.
+- Released versions are semver tags with a leading `v`, starting at
+  `v0.1.0`. An unreleased development build identifies itself as `dev`.
 
 ## What we promise (user-facing behavior)
 
@@ -82,6 +84,11 @@ run.
 - If anything the scores depend on breaks — the scoring program fails, a model
   call fails for good — autotune stops loudly rather than reporting numbers it
   cannot stand behind.
+- Installing is one command, with or without a Go toolchain: a single
+  `curl … | sh` fetches a prebuilt release for the user's platform (Linux or
+  macOS, amd64 or arm64), and `make install` builds from source; both land
+  the binary on the user's PATH by default. `autotune -V` reports exactly
+  which released version is running.
 
 ## Success criteria (outcomes)
 
@@ -99,3 +106,7 @@ run.
   progress?" without consulting any other file.
 - The same folder, replayed with the same pinned config, produces scores
   comparable within the reported noise floor.
+- A user on a clean Linux or macOS machine can install the latest release
+  with one command and confirm what they got with `autotune -V`; the
+  maintainer cuts a new installable release by tagging, with no further
+  manual packaging.

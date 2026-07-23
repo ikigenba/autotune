@@ -26,9 +26,13 @@ whenever a Decision is added or its Verification ids change.
   R-RR0J-54PO, R-RS8F-IWGD, R-RTGB-WO72, R-RUO8-AFXR, R-RVW4-O7OG
 - D9 → `D09.md` — Composition root, seams, end-to-end proof —
   R-RX41-1ZF5, R-RYBX-FR5U
+- D10 → `D10.md` — Versioning, release, and install tooling (embed's
+  scheme) — R-9A0E-BG7N, R-9B8A-P7YC
 
 ## Verification ids → Decision
 
+- R-9A0E-BG7N → D10 (`D10.md`)
+- R-9B8A-P7YC → D10 (`D10.md`)
 - R-E50H-F4MC → D5 (`D05.md`)
 - R-QFGG-82SL → D1 (`D01.md`)
 - R-QGOC-LUJA → D1 (`D01.md`)

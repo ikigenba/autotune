@@ -81,6 +81,46 @@ Loop-driver conventions autotune mirrors:
 - Reads harness stdout with `bufio.ReadBytes('\n')`, not `bufio.Scanner`
   (Scanner's 64KB line limit breaks on large JSONL lines).
 
+## embed (github.com/ikigenba/embed) — release/versioning scheme
+
+The versioning, install, release, and tagging scheme autotune adopts
+wholesale (verified working at embed v0.1.0):
+
+- **Stamping.** `var version = "dev"` in the `main` package; the local
+  Makefile stamps `-X main.version=$(git describe --tags --always --dirty)`
+  into the build; goreleaser stamps `{{ .Tag }}`. Both carry the leading `v`
+  (e.g. `v0.1.0`); an unstamped `go build` prints `dev`. `-V` prints the
+  bare version string to stdout, exit 0.
+- **Makefile.** `BINARY`/`BIN_DIR := bin`/`PREFIX ?= $(HOME)/.local` vars;
+  `build` produces `bin/<binary>` via a file-level rule depending on
+  `go.mod`, `go.sum`, and `$(shell find cmd internal -name '*.go')`;
+  `fmt` = `go fmt ./...`; `test` = `go test ./...`; `install` = build then
+  `install -d $(PREFIX)/bin && install -m 0755`; `clean` = `rm -rf bin` +
+  `go clean`. `bin/` is gitignored.
+- **Release = tag push.** `git tag vX.Y.Z && git push --tags`; a GitHub
+  Actions workflow (`.github/workflows/release.yml`) triggers on `v*` tags,
+  checks out with `fetch-depth: 0` (goreleaser needs full history for the
+  changelog), sets up Go, and runs `goreleaser/goreleaser-action@v6` with
+  `args: release --clean` under `permissions: contents: write`.
+- **goreleaser v2 config** (`.goreleaser.yaml`): single build, `CGO_ENABLED=0`,
+  goos linux+darwin × goarch amd64+arm64, ldflags
+  `-s -w -X main.version={{ .Tag }}`; tar.gz archives with **versionless**
+  asset names (`name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}"`) so
+  `releases/latest/download/<binary>_<os>_<arch>.tar.gz` is a stable URL
+  needing no API call; `checksums.txt`; GitHub changelog (`use: github`).
+- **install.sh** at repo root, run via
+  `curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/install.sh | sh`:
+  `set -eu`; maps `uname -s`/`-m` to linux/darwin and amd64/arm64 (rejecting
+  others); downloads latest or a `<NAME>_VERSION`-pinned tag; installs to
+  `${BINDIR:-${PREFIX:-$HOME/.local}/bin}`; verifies by running `-V`; warns
+  when the destination is not on `PATH`.
+- **README `## Install`** documents both paths: the curl one-liner with the
+  `BINDIR`/`PREFIX`/version-pin overrides, and `make install` from source.
+- **Stamping proof** (embed's `main_test.go` pattern): one test asserts the
+  unstamped build prints `dev`; another builds the binary with
+  `-ldflags "-X main.version=<sentinel>"` and asserts `-V` prints the
+  sentinel.
+
 ## Prior art: the wip-autotune workbench (abandoned, in-tree at ikigenba/wiki)
 
 A working single-project prompt tuner whose mechanics autotune generalizes.
