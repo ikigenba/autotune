@@ -58,6 +58,10 @@ func Run(ctx context.Context, deps Deps, args []string) int {
 		fmt.Fprintln(deps.Stderr, err)
 		return cli.Failed.ExitCode()
 	}
+	if err := cfg.PricingPrecheck(opts.MaxSpend); err != nil {
+		fmt.Fprintln(deps.Stderr, err)
+		return cli.Usage.ExitCode()
+	}
 	w, err := workspace.Create(f.Root, deps.Now())
 	if err != nil {
 		fmt.Fprintln(deps.Stderr, err)

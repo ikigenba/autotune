@@ -1,11 +1,16 @@
 package config
 
 import (
+	"encoding/base64"
+	"fmt"
+	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ikigenba/agentkit/catalog"
 	"github.com/ikigenba/autotune/internal/cli"
 )
 
@@ -130,5 +135,116 @@ func TestResolveValidatesAuthDefaultsFileAndRequiredFields(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), name) {
 			t.Errorf("missing/invalid %s error = %v", name, err)
 		}
+	}
+}
+
+// R-M1DY-UUIB
+func TestConversationUsesCatalogPricingRegardlessOfAuthMode(t *testing.T) {
+	const model = "gpt-5.6-luna"
+	entry, ok := catalog.Lookup(model)
+	if !ok || entry.Pricing == nil {
+		t.Fatalf("catalog entry for %q = %+v, %v", model, entry, ok)
+	}
+
+	keyConfig := []byte(fmt.Sprintf(
+		`{"runner":{"provider":"openai","model":%q,"auth":"key"},"improver":{"provider":"openai","model":%q,"auth":"key"}}`,
+		model, model,
+	))
+	keyPair, err := Resolve(keyConfig, nil, func(string) string { return "test-key" }, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyConv, err := keyPair.Runner.Conversation("system")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authFile := filepath.Join(t.TempDir(), "auth.json")
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"https://api.openai.com/auth":{"chatgpt_account_id":"acct-test"},"exp":4102444800}`))
+	token := "eyJhbGciOiJub25lIn0." + payload + "."
+	authRaw := []byte(fmt.Sprintf(`{"access_token":%q,"refresh_token":"refresh-test","expires_in":3153600000,"token_type":"Bearer"}`, token))
+	if err := os.WriteFile(authFile, authRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	subConfig := []byte(fmt.Sprintf(
+		`{"runner":{"provider":"openai","model":%q,"auth":"sub","auth_file":%q},"improver":{"provider":"openai","model":%q,"auth":"key"}}`,
+		model, authFile, model,
+	))
+	subPair, err := Resolve(subConfig, nil, func(string) string { return "test-key" }, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	subConv, err := subPair.Runner.Conversation("system")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if keyConv.Pricing == nil || subConv.Pricing == nil ||
+		!reflect.DeepEqual(keyConv.Pricing, entry.Pricing) ||
+		!reflect.DeepEqual(subConv.Pricing, entry.Pricing) {
+		t.Fatalf("pricing: key=%+v sub=%+v catalog=%+v", keyConv.Pricing, subConv.Pricing, entry.Pricing)
+	}
+
+	offCatalog := []byte(`{"runner":{"provider":"openai","model":"private-model","auth":"key"},"improver":{"provider":"openai","model":"private-model","auth":"key"}}`)
+	offPair, err := Resolve(offCatalog, nil, func(string) string { return "test-key" }, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	offConv, err := offPair.Runner.Conversation("system")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if offConv.Pricing != nil {
+		t.Fatalf("off-catalog pricing = %+v, want nil", offConv.Pricing)
+	}
+}
+
+// R-M2LV-8M90
+func TestPricingPrecheckRequiresCatalogPricingOnlyForPositiveRail(t *testing.T) {
+	const known = "gpt-5.6-luna"
+	tests := []struct {
+		name       string
+		cfg        Config
+		maxSpend   float64
+		wantErr    bool
+		wantPieces []string
+	}{
+		{
+			name:     "disabled rail allows unknown models",
+			cfg:      Config{Runner: Section{Model: "runner-private"}, Improver: Section{Model: "improver-private"}},
+			maxSpend: 0,
+		},
+		{
+			name:     "known models allow positive rail",
+			cfg:      Config{Runner: Section{Model: known}, Improver: Section{Model: known}},
+			maxSpend: 1,
+		},
+		{
+			name:       "unknown runner is named",
+			cfg:        Config{Runner: Section{Model: "runner-private"}, Improver: Section{Model: known}},
+			maxSpend:   1,
+			wantErr:    true,
+			wantPieces: []string{"runner", "runner-private"},
+		},
+		{
+			name:       "unknown improver is named",
+			cfg:        Config{Runner: Section{Model: known}, Improver: Section{Model: "improver-private"}},
+			maxSpend:   1,
+			wantErr:    true,
+			wantPieces: []string{"improver", "improver-private"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.cfg.PricingPrecheck(tc.maxSpend)
+			if tc.wantErr != (err != nil) {
+				t.Fatalf("PricingPrecheck(%v) error = %v, want error %v", tc.maxSpend, err, tc.wantErr)
+			}
+			for _, piece := range tc.wantPieces {
+				if !strings.Contains(err.Error(), piece) {
+					t.Errorf("error %q does not name %q", err, piece)
+				}
+			}
+		})
 	}
 }

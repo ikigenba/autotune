@@ -12,6 +12,7 @@ import (
 
 	"github.com/ikigenba/agentkit"
 	"github.com/ikigenba/agentkit/anthropic"
+	"github.com/ikigenba/agentkit/catalog"
 	"github.com/ikigenba/agentkit/google"
 	"github.com/ikigenba/agentkit/openai"
 	"github.com/ikigenba/agentkit/openai/subscription"
@@ -241,9 +242,14 @@ func (s *Section) Conversation(system string) (*agentkit.Conversation, error) {
 	if err != nil {
 		return nil, err
 	}
+	var pricing *agentkit.Pricing
+	if entry, ok := catalog.Lookup(s.Model); ok {
+		pricing = entry.Pricing
+	}
 	return &agentkit.Conversation{
 		Provider: provider,
 		Model:    s.Model,
+		Pricing:  pricing,
 		System:   system,
 		Gen: agentkit.GenSettings{
 			Temperature: s.Temperature,
@@ -253,6 +259,30 @@ func (s *Section) Conversation(system string) (*agentkit.Conversation, error) {
 		},
 		Retry: s.Retry,
 	}, nil
+}
+
+// PricingPrecheck verifies that a positive spend rail can account for every
+// configured conversation before any model call is made.
+func (c *Config) PricingPrecheck(maxSpend float64) error {
+	if maxSpend == 0 {
+		return nil
+	}
+	if c == nil {
+		return fmt.Errorf("config: nil config")
+	}
+	for _, item := range []struct {
+		name  string
+		model string
+	}{
+		{name: "runner", model: c.Runner.Model},
+		{name: "improver", model: c.Improver.Model},
+	} {
+		entry, ok := catalog.Lookup(item.model)
+		if !ok || entry.Pricing == nil {
+			return fmt.Errorf("config: cannot arm spend rail: %s model %q has no catalog pricing", item.name, item.model)
+		}
+	}
+	return nil
 }
 
 func (s *Section) provider() (agentkit.Provider, error) {
