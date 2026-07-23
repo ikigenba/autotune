@@ -24,7 +24,8 @@ make install    # build and install to ~/.local/bin/autotune
 
 `examples/extract` tunes a subject-and-claim extraction prompt against 15 dev
 and 8 holdout cases with a deterministic embedding-based scorer. It needs the
-`embed` CLI on PATH and an OpenAI subscription login at `~/.autotune/auth.json`
+[`embed`](https://github.com/ikigenba/embed) CLI on PATH and an OpenAI
+subscription login at `~/.autotune/auth.json`
 (see `examples/extract/README.md` for details).
 
 ```

@@ -53,7 +53,8 @@ missing:
 ## Scoring with embeddings
 
 For fuzzy text comparison (did the output say the same thing as the gold?),
-exact string matching is too brittle. The `embed` CLI exists for this: pipe it
+exact string matching is too brittle. The
+[`embed`](https://github.com/ikigenba/embed) CLI exists for this: pipe it
 a JSON array of strings on stdin and it prints
 `{"model", "provider", "dimensions", "embeddings"}` with one vector per input
 string, in order. Batch every string from a case into one call, then compare

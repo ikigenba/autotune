@@ -32,7 +32,8 @@ below that.
 
 ## Requirements
 
-- `embed` CLI on PATH (`~/projects/embed`; override with `EMBED_BIN`) —
+- `embed` CLI on PATH (https://github.com/ikigenba/embed; override with
+  `EMBED_BIN`) —
   the scorer gets claim embeddings through it (openai
   `text-embedding-3-small` @ 1536, the workbench pins). The embed CLI
   owns credentials (`OPENAI_API_KEY`, provided by this repo's `.envrc`)
