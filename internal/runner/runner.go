@@ -32,13 +32,16 @@ type EvalResult struct {
 // NewConv builds a fresh conversation for one model call.
 type NewConv func(system string) (*agentkit.Conversation, error)
 
+// WarnFunc receives provider warnings after a stream has been drained.
+type WarnFunc func(agentkit.Warning)
+
 type outcome struct {
 	result CaseResult
 	err    error
 }
 
 // Evaluate runs every case, with at most parallel model calls in flight.
-func Evaluate(ctx context.Context, nc NewConv, score scorer.Scorer, prompt string, cases []folder.Case, parallel int) (*EvalResult, error) {
+func Evaluate(ctx context.Context, nc NewConv, score scorer.Scorer, prompt string, cases []folder.Case, parallel int, warn WarnFunc) (*EvalResult, error) {
 	if parallel < 1 {
 		return nil, fmt.Errorf("parallel must be at least 1")
 	}
@@ -71,7 +74,7 @@ func Evaluate(ctx context.Context, nc NewConv, score scorer.Scorer, prompt strin
 					if !ok {
 						return
 					}
-					result, err := evaluateCase(ctx, nc, score, prompt, c)
+					result, err := evaluateCase(ctx, nc, score, prompt, c, warn)
 					outcomes <- outcome{result: result, err: err}
 					if err != nil {
 						return
@@ -130,7 +133,7 @@ func Evaluate(ctx context.Context, nc NewConv, score scorer.Scorer, prompt strin
 	return final, nil
 }
 
-func evaluateCase(ctx context.Context, nc NewConv, score scorer.Scorer, prompt string, c folder.Case) (CaseResult, error) {
+func evaluateCase(ctx context.Context, nc NewConv, score scorer.Scorer, prompt string, c folder.Case, warn WarnFunc) (CaseResult, error) {
 	conv, err := nc(prompt)
 	if err != nil {
 		return CaseResult{}, fmt.Errorf("case %q: create conversation: %w", c.Name, err)
@@ -154,6 +157,11 @@ func evaluateCase(ctx context.Context, nc NewConv, score scorer.Scorer, prompt s
 		if done, ok := event.(agentkit.MessageDone); ok {
 			output = messageText(done.Message)
 			foundDone = true
+		}
+	}
+	if warn != nil {
+		for _, warning := range stream.Warnings() {
+			warn(warning)
 		}
 	}
 	if err := stream.Err(); err != nil {

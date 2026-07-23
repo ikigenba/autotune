@@ -98,7 +98,7 @@ func TestEvaluateUsesFreshBareConversationAndCapturesFinalAssistantText(t *testi
 		return scorer.Result{Score: 1, Feedback: caseDir + ":" + output}, nil
 	})
 
-	got, err := Evaluate(context.Background(), nc, score, "candidate prompt", cases, 2)
+	got, err := Evaluate(context.Background(), nc, score, "candidate prompt", cases, 2, nil)
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v", err)
 	}
@@ -164,7 +164,7 @@ func evaluateWithDelays(t *testing.T, delays map[string]time.Duration) (*EvalRes
 		return scorer.Result{Score: map[string]float64{"out-a": 1, "out-b": 2, "out-c": 3}[output]}, nil
 	})
 	cases := []folder.Case{{Name: "charlie", Input: "c"}, {Name: "alpha", Input: "a"}, {Name: "bravo", Input: "b"}}
-	got, err := Evaluate(context.Background(), nc, score, "prompt", cases, 2)
+	got, err := Evaluate(context.Background(), nc, score, "prompt", cases, 2, nil)
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v", err)
 	}
@@ -230,7 +230,7 @@ func TestEvaluateModelFailureCancelsInflightAndPendingCases(t *testing.T) {
 	})
 	cases := []folder.Case{{Name: "failing-case", Input: "bad"}, {Name: "slow-case", Input: "slow"}, {Name: "pending-case", Input: "pending"}}
 
-	got, err := Evaluate(context.Background(), nc, score, "prompt", cases, 2)
+	got, err := Evaluate(context.Background(), nc, score, "prompt", cases, 2, nil)
 	if err == nil || got != nil {
 		t.Fatalf("Evaluate() = (%#v, %v), want nil result and error", got, err)
 	}
@@ -265,7 +265,7 @@ func TestEvaluateSumsExactReportedCaseCosts(t *testing.T) {
 	})
 	cases := []folder.Case{{Name: "one", Input: "one"}, {Name: "two", Input: "two"}, {Name: "three", Input: "three"}}
 
-	got, err := Evaluate(context.Background(), nc, score, "prompt", cases, 3)
+	got, err := Evaluate(context.Background(), nc, score, "prompt", cases, 3, nil)
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v", err)
 	}

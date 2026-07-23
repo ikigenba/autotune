@@ -72,7 +72,7 @@ func TestProposeRetriesMalformedRepliesWithFreshCallsAndExhausts(t *testing.T) {
 	t.Run("retry succeeds", func(t *testing.T) {
 		provider := &scriptedProvider{replies: []string{"bad", "SUMMARY: fixed\n```\nnew prompt\n```"}}
 		nc := newConversationFactory(provider)
-		summary, prompt, err := Propose(context.Background(), nc, "improve system", Evidence{}, 1)
+		summary, prompt, err := Propose(context.Background(), nc, "improve system", Evidence{}, 1, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -82,7 +82,7 @@ func TestProposeRetriesMalformedRepliesWithFreshCallsAndExhausts(t *testing.T) {
 	})
 	t.Run("exhaustion fails", func(t *testing.T) {
 		provider := &scriptedProvider{replies: []string{"bad", "still bad", "also bad"}}
-		_, _, err := Propose(context.Background(), newConversationFactory(provider), "system", Evidence{}, 2)
+		_, _, err := Propose(context.Background(), newConversationFactory(provider), "system", Evidence{}, 2, nil)
 		if err == nil || !strings.Contains(err.Error(), "invalid after 3 attempts") {
 			t.Fatalf("expected exhaustion error, got %v", err)
 		}
@@ -101,7 +101,7 @@ func TestProposeCallsAreSequentialFreshAndBare(t *testing.T) {
 		conversations = append(conversations, conversation)
 		return conversation, nil
 	}
-	if _, _, err := Propose(context.Background(), nc, "instructions", Evidence{Incumbent: "old"}, 1); err != nil {
+	if _, _, err := Propose(context.Background(), nc, "instructions", Evidence{Incumbent: "old"}, 1, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(conversations) != 2 || conversations[0] == conversations[1] {

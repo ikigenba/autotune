@@ -150,7 +150,7 @@ func splitLines(s string) []lineSpan {
 }
 
 // Propose makes a fresh, tool-free call for each parse attempt.
-func Propose(ctx context.Context, nc runner.NewConv, improveMD string, e Evidence, maxRetries int) (summary, prompt string, err error) {
+func Propose(ctx context.Context, nc runner.NewConv, improveMD string, e Evidence, maxRetries int, warn runner.WarnFunc) (summary, prompt string, err error) {
 	if nc == nil {
 		return "", "", errors.New("improver: nil conversation factory")
 	}
@@ -171,7 +171,7 @@ func Propose(ctx context.Context, nc runner.NewConv, improveMD string, e Evidenc
 			_ = conversation.Close()
 			return "", "", errors.New("improver: conversation must not have tools")
 		}
-		reply, callErr := send(ctx, conversation, bundle)
+		reply, callErr := send(ctx, conversation, bundle, warn)
 		closeErr := conversation.Close()
 		if callErr != nil {
 			return "", "", fmt.Errorf("improver call: %w", callErr)
@@ -187,7 +187,7 @@ func Propose(ctx context.Context, nc runner.NewConv, improveMD string, e Evidenc
 	return "", "", fmt.Errorf("improver response invalid after %d attempts: %w", maxRetries+1, parseErr)
 }
 
-func send(ctx context.Context, conversation *agentkit.Conversation, user string) (string, error) {
+func send(ctx context.Context, conversation *agentkit.Conversation, user string, warn runner.WarnFunc) (string, error) {
 	stream := conversation.Send(ctx, user)
 	var reply string
 	for event := range stream.Events() {
@@ -196,6 +196,11 @@ func send(ctx context.Context, conversation *agentkit.Conversation, user string)
 			reply = messageText(done.Message)
 		case *agentkit.MessageDone:
 			reply = messageText(done.Message)
+		}
+	}
+	if warn != nil {
+		for _, warning := range stream.Warnings() {
+			warn(warning)
 		}
 	}
 	if err := stream.Err(); err != nil {

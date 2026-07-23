@@ -212,6 +212,78 @@ func TestRunWritesEveryFailureCauseToErr(t *testing.T) {
 	}
 }
 
+func TestRunAccumulatesComputedConversationCostsForSpendRail(t *testing.T) {
+	// R-M3TR-MDZP
+	pricing := agentkit.Pricing{Tiers: []agentkit.RateTier{{
+		InputUncached: 10_000_000,
+		Output:        20_000_000,
+	}}}
+	baselineUsage := agentkit.Usage{InputUncached: 5, Output: 2, Total: 7}
+	improverUsage := agentkit.Usage{InputUncached: 7, Output: 3, Total: 10}
+	candidateUsage := agentkit.Usage{InputUncached: 11, Output: 4, Total: 15}
+	wantCost := pricing.Cost(baselineUsage) + pricing.Cost(improverUsage) + pricing.Cost(candidateUsage)
+	maxSpend := wantCost.USD() - 0.000000001
+
+	h := newHarness(
+		[]reply{{text: "0.5", usage: baselineUsage}, {text: "0.4", usage: candidateUsage}},
+		[]reply{{text: proposal("reject", "candidate").text, usage: improverUsage}},
+	)
+	h.deps.RunnerConv = newPricedConversation(h.runner, &pricing)
+	h.deps.ImproverConv = newPricedConversation(h.improver, &pricing)
+	out, code := h.run(context.Background(), Options{Repeat: 1, Rails: Rails{MaxSpend: maxSpend}})
+
+	if code != ExitBudget || out.StopReason != "max spend" {
+		t.Fatalf("outcome = %+v, code = %d, want computed-cost spend rail", out, code)
+	}
+	if h.runner.callsCount() != 2 || h.improver.callsCount() != 1 {
+		t.Fatalf("calls = runner %d, improver %d, want all three priced turns before rail", h.runner.callsCount(), h.improver.callsCount())
+	}
+	if wantCost == 0 || maxSpend <= (pricing.Cost(baselineUsage)+pricing.Cost(improverUsage)).USD() {
+		t.Fatalf("invalid cost boundary: exact total=%d max=%v", wantCost, maxSpend)
+	}
+
+	nextCall := errors.New("continued beyond exact first-iteration spend")
+	h = newHarness(
+		[]reply{{text: "0.5", usage: baselineUsage}, {text: "0.4", usage: candidateUsage}},
+		[]reply{
+			{text: proposal("reject", "candidate").text, usage: improverUsage},
+			{err: nextCall},
+		},
+	)
+	h.deps.RunnerConv = newPricedConversation(h.runner, &pricing)
+	h.deps.ImproverConv = newPricedConversation(h.improver, &pricing)
+	out, code = h.run(context.Background(), Options{Repeat: 1, Rails: Rails{MaxSpend: wantCost.USD() + 0.000000001}})
+	if code != ExitFailure || out.StopReason != "internal failure" || !strings.Contains(h.errOutput.String(), nextCall.Error()) {
+		t.Fatalf("above-exact boundary outcome = %+v, code = %d, stderr = %q", out, code, h.errOutput.String())
+	}
+	if h.improver.callsCount() != 2 {
+		t.Fatalf("above-exact boundary improver calls = %d, want second iteration", h.improver.callsCount())
+	}
+}
+
+func TestRunDeduplicatesAllProviderWarningCodesToErr(t *testing.T) {
+	// R-M51O-05QE
+	repeated := agentkit.Warning{Setting: "tool_choice", Code: agentkit.WarnToolChoiceForced, Detail: "forced choice degraded"}
+	distinct := agentkit.Warning{Setting: "tool_schema", Code: agentkit.WarnToolSchemaLossy, Detail: "schema keywords removed"}
+	h := newHarness(
+		[]reply{
+			{text: "0.5", warnings: []agentkit.Warning{repeated}},
+			{text: "0.4", warnings: []agentkit.Warning{repeated, distinct}},
+		},
+		[]reply{{text: proposal("reject", "candidate").text, warnings: []agentkit.Warning{repeated}}},
+	)
+
+	_, _ = h.run(context.Background(), Options{Repeat: 1, Rails: Rails{MaxIterations: 1}})
+
+	want := "warning: tool_choice — forced choice degraded\nwarning: tool_schema — schema keywords removed\n"
+	if got := h.errOutput.String(); got != want {
+		t.Fatalf("stderr = %q, want exactly %q", got, want)
+	}
+	if strings.Contains(h.output.String(), "warning:") {
+		t.Fatalf("stdout contains warning line: %q", h.output.String())
+	}
+}
+
 type harness struct {
 	deps      Deps
 	folder    *folder.Folder
@@ -253,16 +325,23 @@ func (h *harness) run(ctx context.Context, opts Options) (Outcome, int) {
 }
 
 func newConversation(provider agentkit.Provider) runner.NewConv {
+	pricing := &agentkit.Pricing{}
+	return newPricedConversation(provider, pricing)
+}
+
+func newPricedConversation(provider agentkit.Provider, pricing *agentkit.Pricing) runner.NewConv {
 	return func(system string) (*agentkit.Conversation, error) {
-		return &agentkit.Conversation{Provider: provider, Model: "test", System: system}, nil
+		return &agentkit.Conversation{Provider: provider, Model: "test", System: system, Pricing: pricing}, nil
 	}
 }
 
 type reply struct {
-	text   string
-	cost   agentkit.Cost
-	err    error
-	before func()
+	text     string
+	cost     agentkit.Cost
+	usage    agentkit.Usage
+	warnings []agentkit.Warning
+	err      error
+	before   func()
 }
 
 func proposal(summary, prompt string) reply {
@@ -290,7 +369,7 @@ func (p *scriptedProvider) RoundTrip(context.Context, *agentkit.Request) *agentk
 		r.before()
 	}
 	message := agentkit.Message{Role: agentkit.RoleAssistant, Blocks: []agentkit.Block{agentkit.TextBlock{Text: r.text}}}
-	return agentkit.NewRoundTrip(message, agentkit.FinishStop, agentkit.Usage{}, nil, r.err, r.cost, r.cost != 0)
+	return agentkit.NewRoundTrip(message, agentkit.FinishStop, r.usage, r.warnings, r.err, r.cost, r.cost != 0)
 }
 
 func (p *scriptedProvider) callsCount() int {

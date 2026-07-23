@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ikigenba/agentkit"
@@ -93,6 +94,7 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 	totalCost := agentkit.Cost(0)
 	var lastCases []runner.CaseResult
 	var history []improver.Attempt
+	warn := warningSink(deps.Err)
 
 	fail := func(reason string, code int) {
 		out.StopReason = reason
@@ -104,24 +106,24 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 	}
 	if f == nil || cfg == nil || deps.RunnerConv == nil || deps.ImproverConv == nil || deps.Scorer == nil || deps.Workspace == nil {
 		fail("internal failure", ExitFailure)
-		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
+		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost, warn)
 	}
 	if opts.Repeat < 1 || opts.Parallel < 1 || opts.Rails.MaxIterations < 0 || opts.Rails.MaxTime < 0 || opts.Rails.MaxSpend < 0 {
 		fail("internal failure", ExitFailure)
-		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
+		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost, warn)
 	}
 	if err := deps.Workspace.WriteConfigStamp(cfg); err != nil {
 		failErr("internal failure", ExitFailure, err)
-		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
+		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost, warn)
 	}
 
 	composites := make([]float64, 0, opts.Repeat)
 	minimum, maximum := math.Inf(1), math.Inf(-1)
 	for range opts.Repeat {
-		ev, err := runner.Evaluate(ctx, deps.RunnerConv, deps.Scorer, f.Prompt, f.Dev, opts.Parallel)
+		ev, err := runner.Evaluate(ctx, deps.RunnerConv, deps.Scorer, f.Prompt, f.Dev, opts.Parallel, warn)
 		if err != nil {
 			failErr(contextStop(ctx, err), contextExit(ctx, err), err)
-			return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
+			return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost, warn)
 		}
 		totalCost += ev.Cost
 		composites = append(composites, ev.Composite)
@@ -136,7 +138,7 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 	winner = f.Prompt
 	if err := deps.Workspace.WriteBaseline(composites, out.Baseline, out.Epsilon); err != nil {
 		failErr("internal failure", ExitFailure, err)
-		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
+		return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost, warn)
 	}
 
 	iterations := 0
@@ -173,13 +175,13 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 			WorstK:    opts.WorstK,
 		}
 		tracked, improverCost := trackConversations(deps.ImproverConv)
-		summary, candidate, err := improver.Propose(ctx, tracked, f.ImproveMD, evidence, opts.MaxRetries)
+		summary, candidate, err := improver.Propose(ctx, tracked, f.ImproveMD, evidence, opts.MaxRetries, warn)
 		totalCost += improverCost()
 		if err != nil {
 			failErr(contextStop(ctx, err), contextExit(ctx, err), err)
 			break
 		}
-		ev, err := runner.Evaluate(ctx, deps.RunnerConv, deps.Scorer, candidate, f.Dev, opts.Parallel)
+		ev, err := runner.Evaluate(ctx, deps.RunnerConv, deps.Scorer, candidate, f.Dev, opts.Parallel, warn)
 		if err != nil {
 			failErr(contextStop(ctx, err), contextExit(ctx, err), err)
 			break
@@ -208,7 +210,7 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 		}
 	}
 
-	return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost)
+	return finalize(ctx, deps, f, cfg, out, exit, winner, totalCost, warn)
 }
 
 func defaults(opts Options) Options {
@@ -246,14 +248,28 @@ func trackConversations(nc runner.NewConv) (runner.NewConv, func() agentkit.Cost
 	return tracked, cost
 }
 
-func finalize(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, out Outcome, exit int, winner string, totalCost agentkit.Cost) (Outcome, int) {
+func warningSink(w io.Writer) runner.WarnFunc {
+	var mu sync.Mutex
+	seen := make(map[agentkit.WarningCode]struct{})
+	return func(warning agentkit.Warning) {
+		mu.Lock()
+		defer mu.Unlock()
+		if _, exists := seen[warning.Code]; exists {
+			return
+		}
+		seen[warning.Code] = struct{}{}
+		fmt.Fprintf(w, "warning: %s — %s\n", warning.Setting, warning.Detail)
+	}
+}
+
+func finalize(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, out Outcome, exit int, winner string, totalCost agentkit.Cost, warn runner.WarnFunc) (Outcome, int) {
 	_ = cfg
 	_ = totalCost
 	if deps.Workspace == nil {
 		return out, exit
 	}
 	if out.Accepted > 0 && f != nil && len(f.Holdout) > 0 {
-		ev, err := runner.Evaluate(context.WithoutCancel(ctx), deps.RunnerConv, deps.Scorer, winner, f.Holdout, 1)
+		ev, err := runner.Evaluate(context.WithoutCancel(ctx), deps.RunnerConv, deps.Scorer, winner, f.Holdout, 1, warn)
 		if err != nil {
 			fmt.Fprintln(deps.Err, err)
 			out.StopReason = "internal failure"
