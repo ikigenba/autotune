@@ -35,9 +35,27 @@ design relies on:
   (`oauth-login`), the library does no terminal I/O.
 - Advisory `catalog` package: `Lookup(model)`, `Resolve(provider, model)`,
   `Check(model, ReasoningValue)`; unknown models are never rejected, just
-  unadvised.
-- Cost is self-reported per stream (`stream.Cost()`); `conv.TotalUsage()` /
-  `TotalCost()` accumulate across turns.
+  unadvised. `Lookup` returns `Entry{Pricing *agentkit.Pricing, ...}`;
+  the openai families (including the default `gpt-5.6-luna`/`gpt-5.6-sol`)
+  carry pricing data.
+- **Cost resolution is a per-turn fallback chain, auth-agnostic**
+  (verified in v0.7.0 `orchestration.go`): provider-reported cost if the
+  round trip carries one; else `Conversation.Pricing.Cost(usage)` when the
+  consumer set `Pricing *agentkit.Pricing` on the conversation; else cost 0
+  plus a `WarnCostUnknown` warning ("no reported or consumer-supplied cost;
+  applied 0"). The credential/auth mode is never consulted. **Only the
+  `openrouter` provider self-reports cost** (it extracts the wire usage
+  payload's `cost` field); `openai`, `anthropic`, `google`, and `zai` never
+  do, in any auth mode — a consumer that leaves `Pricing` nil gets $0 from
+  all of them. `Pricing` is tiered nano-USD-per-token rates; `Cost.USD()`
+  converts for display. `stream.Cost()` returns the resolved turn cost;
+  `conv.TotalUsage()` / `TotalCost()` accumulate across turns.
+- Provider degradation warnings: `stream.Warnings() []Warning` with
+  `Warning{Setting string, Code WarningCode, Detail string}`; codes in
+  v0.7.0 are `WarnToolChoiceForced`, `WarnToolSchemaLossy`,
+  `WarnCostUnknown`. Warnings are per-stream and silent unless the consumer
+  reads them (they also appear on the optional `Conversation.Log` JSONL
+  hook as `type:"warning"` records).
 - Because the `Provider` interface is the seam, orchestration can be tested
   in-process against a scripted fake provider; the real HTTP contracts with
   provider APIs are exercised by agentkit's own test suite, not by consumers.

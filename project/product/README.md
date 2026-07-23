@@ -78,6 +78,17 @@ run.
 - While running, autotune continuously logs its progress — every baseline
   measurement, every candidate's score and keep/reject verdict, running cost —
   so a glance at the terminal shows it is alive and converging.
+- Cost figures are real. Whenever the configured models are ones autotune
+  knows prices for (all the defaults are), running and final cost is computed
+  from actual token usage — for every provider and however the user
+  authenticates. Only a model autotune has no price data for shows zero cost,
+  and autotune says so rather than staying silent.
+- A dollar budget is enforceable or refused: if the user sets a spend budget
+  but autotune cannot price a configured model, it refuses to start rather
+  than running uncapped behind a budget that cannot bind.
+- When a model call degrades what was asked of it — a setting the provider
+  would not honor, a cost it could not determine — autotune surfaces the
+  warning instead of dropping it.
 - Configuration is passed generically as `-c key=value`, consistent with the
   user's other agent tools; the runner and the improver are configured
   independently, and each folder pins its own reproducible defaults.
@@ -102,6 +113,9 @@ run.
   cost.
 - The starting prompt file is byte-identical before and after every run.
 - A run left overnight respects the budgets it was given and ends on its own.
+- A run with a dollar budget never spends unmeasured: either every configured
+  model is priceable and the budget binds on real cost, or the run refuses to
+  start.
 - Watching the terminal during a run answers "is it healthy and making
   progress?" without consulting any other file.
 - The same folder, replayed with the same pinned config, produces scores

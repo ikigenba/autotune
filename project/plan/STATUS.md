@@ -8,4 +8,7 @@ that phase's body file. On completion the build loop deletes the phase's
 line and body file — there is no done marker; done is gone. No bare status
 glyph appears outside phase lines.
 
-Next phase: 12
+Next phase: 14
+
+- Phase 12 ⬜ realizes R-M1DY-UUIB, R-M2LV-8M90 — catalog pricing on conversations and the spend pre-check
+- Phase 13 ⬜ realizes R-M3TR-MDZP, R-M51O-05QE — warnings surfaced and spend accumulated from computed cost

@@ -8,16 +8,17 @@ whenever a Decision is added or its Verification ids change.
 
 - D1 → `D01.md` — Tune-folder contract and `--init` — R-QFGG-82SL,
   R-QGOC-LUJA, R-QHW8-ZM9Z, R-QJ45-DE0O, R-QKC1-R5RD, R-QLJY-4XI2
-- D2 → `D02.md` — Config model: two agents, namespaced `-c`, folder pins —
-  R-QMRU-IP8R, R-QNZQ-WGZG, R-QQFJ-O0GU, R-QRNG-1S7J, R-QSVC-FJY8,
-  R-QU38-TBOX
+- D2 → `D02.md` — Config model: two agents, namespaced `-c`, folder pins,
+  catalog pricing, spend pre-check — R-QMRU-IP8R, R-QNZQ-WGZG, R-QQFJ-O0GU,
+  R-QRNG-1S7J, R-QSVC-FJY8, R-QU38-TBOX, R-M1DY-UUIB, R-M2LV-8M90
 - D3 → `D03.md` — Runner: one bare call per case, bounded parallelism —
   R-QVB5-73FM, R-QWJ1-KV6B, R-QXQX-YMX0, R-QYYU-CENP
 - D4 → `D04.md` — Scorer contract: external executable, hard failure —
   R-R06Q-Q6EE, R-R1EN-3Y53, R-R2MJ-HPVS, R-R3UF-VHMH
 - D5 → `D05.md` — Tuning loop: baseline, epsilon acceptance, rails,
-  finalize — R-R52C-99D6, R-R7I5-0SUK, R-R8Q1-EKL9, R-R9XX-SCBY,
-  R-RB5U-642N, R-RCDQ-JVTC, R-RDLM-XNK1, R-E50H-F4MC
+  warnings surfacing, finalize — R-R52C-99D6, R-R7I5-0SUK, R-R8Q1-EKL9,
+  R-R9XX-SCBY, R-RB5U-642N, R-RCDQ-JVTC, R-RDLM-XNK1, R-E50H-F4MC,
+  R-M3TR-MDZP, R-M51O-05QE
 - D6 → `D06.md` — Improver: fresh-context bare call, evidence bundle —
   R-RETJ-BFAQ, R-RG1F-P71F, R-RH9C-2YS4, R-RIH8-GQIT
 - D7 → `D07.md` — Run workspace: `runs/<id>/`, incumbent never touched —
@@ -34,6 +35,10 @@ whenever a Decision is added or its Verification ids change.
 - R-9A0E-BG7N → D10 (`D10.md`)
 - R-9B8A-P7YC → D10 (`D10.md`)
 - R-E50H-F4MC → D5 (`D05.md`)
+- R-M1DY-UUIB → D2 (`D02.md`)
+- R-M2LV-8M90 → D2 (`D02.md`)
+- R-M3TR-MDZP → D5 (`D05.md`)
+- R-M51O-05QE → D5 (`D05.md`)
 - R-QFGG-82SL → D1 (`D01.md`)
 - R-QGOC-LUJA → D1 (`D01.md`)
 - R-QHW8-ZM9Z → D1 (`D01.md`)
