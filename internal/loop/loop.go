@@ -4,6 +4,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -26,6 +27,13 @@ const (
 	ExitBudget      = 3
 	ExitInterrupted = 130
 )
+
+// maxConsecutiveSkips bounds graceful degradation: a single unparseable
+// improver reply skips its iteration and the loop continues, but this many
+// back-to-back skips means the improver is persistently unusable — a
+// genuinely unrecoverable error that stops the run with ExitFailure rather
+// than burning the remaining budget on replies it can never parse.
+const maxConsecutiveSkips = 3
 
 // Rails are the optional iteration, elapsed-time, and cost limits. Zero means
 // unlimited.
@@ -50,6 +58,7 @@ type Outcome struct {
 	Epsilon    float64
 	Best       float64
 	Accepted   int
+	Skipped    int
 	Holdout    *float64
 	Verdict    string
 	StopReason string
@@ -142,6 +151,7 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 	}
 
 	iterations := 0
+	consecutiveSkips := 0
 	for {
 		if opts.Rails.MaxIterations > 0 && iterations >= opts.Rails.MaxIterations {
 			fail("max iterations", ExitBudget)
@@ -178,9 +188,29 @@ func Run(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Config, o
 		summary, candidate, err := improver.Propose(ctx, tracked, f.ImproveMD, evidence, opts.MaxRetries, warn)
 		totalCost += improverCost()
 		if err != nil {
+			// An unparseable improver reply is recoverable: record the skip,
+			// let it count against the rails (the iteration was consumed), and
+			// keep going on the best-so-far. Only a run of consecutive skips —
+			// a persistently unusable improver — is treated as unrecoverable.
+			if ctx.Err() == nil && errors.Is(err, improver.ErrUnparseable) {
+				fmt.Fprintln(deps.Err, err)
+				out.Skipped++
+				consecutiveSkips++
+				if werr := deps.Workspace.AppendHistory(skipLine(iterations, err)); werr != nil {
+					failErr("internal failure", ExitFailure, werr)
+					break
+				}
+				if consecutiveSkips >= maxConsecutiveSkips {
+					failErr("improver unrecoverable", ExitFailure,
+						fmt.Errorf("improver produced no parseable reply for %d consecutive iterations", consecutiveSkips))
+					break
+				}
+				continue
+			}
 			failErr(contextStop(ctx, err), contextExit(ctx, err), err)
 			break
 		}
+		consecutiveSkips = 0
 		ev, err := runner.Evaluate(ctx, deps.RunnerConv, deps.Scorer, candidate, f.Dev, opts.Parallel, warn)
 		if err != nil {
 			failErr(contextStop(ctx, err), contextExit(ctx, err), err)
@@ -290,7 +320,7 @@ func finalize(ctx context.Context, deps Deps, f *folder.Folder, cfg *config.Conf
 	}
 	if err := deps.Workspace.WriteSummary(workspace.Summary{
 		Baseline: out.Baseline, Epsilon: out.Epsilon, Best: out.Best,
-		Accepted: out.Accepted, Holdout: out.Holdout, Verdict: out.Verdict, StopReason: out.StopReason,
+		Accepted: out.Accepted, Skipped: out.Skipped, Holdout: out.Holdout, Verdict: out.Verdict, StopReason: out.StopReason,
 	}, diff); err != nil {
 		fmt.Fprintln(deps.Err, err)
 		out.StopReason = "internal failure"
@@ -318,16 +348,34 @@ func historyLine(iteration int, a improver.Attempt) string {
 	return fmt.Sprintf("iteration=%d composite=%.6f accepted=%t summary=%q", iteration, a.Composite, a.Accepted, a.Summary)
 }
 
+// skipLine records a skipped iteration in the run history. The cause is
+// collapsed to one line so it satisfies the single-line history contract.
+func skipLine(iteration int, cause error) string {
+	oneLine := strings.Join(strings.Fields(cause.Error()), " ")
+	return fmt.Sprintf("iteration=%d skipped=true cause=%q", iteration, oneLine)
+}
+
 func printReport(w io.Writer, out Outcome, diff string) {
 	if out.Accepted == 0 {
-		fmt.Fprintf(w, "no improvement found\nbaseline: %.6f\nepsilon: %.6f\nstop: %s\n", out.Baseline, out.Epsilon, out.StopReason)
+		fmt.Fprintf(w, "no improvement found\nbaseline: %.6f\nepsilon: %.6f\n", out.Baseline, out.Epsilon)
+		if out.Skipped > 0 {
+			fmt.Fprintf(w, "skipped: %d\n", out.Skipped)
+		}
+		fmt.Fprintf(w, "stop: %s\n", out.StopReason)
 		return
 	}
 	fmt.Fprintf(w, "accepted: %d\nbaseline: %.6f\nbest: %.6f\n", out.Accepted, out.Baseline, out.Best)
 	if out.Holdout != nil {
 		fmt.Fprintf(w, "holdout: %.6f\nverdict: %s\n", *out.Holdout, out.Verdict)
 	}
+	if out.Skipped > 0 {
+		fmt.Fprintf(w, "skipped: %d\n", out.Skipped)
+	}
 	fmt.Fprint(w, diff)
+	if diff != "" && !strings.HasSuffix(diff, "\n") {
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintf(w, "stop: %s\n", out.StopReason)
 }
 
 func unifiedDiff(before, after string) string {

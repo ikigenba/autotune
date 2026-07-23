@@ -95,6 +95,12 @@ run.
 - If anything the scores depend on breaks — the scoring program fails, a model
   call fails for good — autotune stops loudly rather than reporting numbers it
   cannot stand behind.
+- A single malformed improver reply never throws away a good run. autotune
+  tells the improver what was wrong and asks again; if it still cannot read a
+  revision, it skips that one iteration, records it, and keeps going on the
+  best result so far, ending through its normal budgets. It gives up loudly
+  only when the improver is persistently unusable — never producing a readable
+  revision at all.
 - Installing is one command, with or without a Go toolchain: a single
   `curl … | sh` fetches a prebuilt release for the user's platform (Linux or
   macOS, amd64 or arm64), and `make install` builds from source; both land

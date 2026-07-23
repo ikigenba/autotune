@@ -80,22 +80,28 @@ func tableCell(value string) string {
 	return strings.ReplaceAll(value, "|", "\\|")
 }
 
-// Parse validates and extracts an improver response.
+// ErrUnparseable marks a Propose failure in which the improver's replies could
+// not be parsed after every attempt, as distinct from a hard call or context
+// error. The tuning loop skips the iteration on ErrUnparseable and keeps going;
+// any other Propose error still stops the run.
+var ErrUnparseable = errors.New("improver response unparseable")
+
+// Parse validates and extracts an improver response. It is lenient about the
+// SUMMARY marker — leading whitespace and surrounding markdown emphasis
+// (`**`, `*`, `_`, `__`, backticks) are tolerated, e.g. "**SUMMARY:** ..." —
+// while keeping the contract unambiguous: exactly one SUMMARY line outside the
+// fenced block, and exactly one fenced block whose contents are the complete
+// replacement prompt. A SUMMARY-looking line inside the fence is part of the
+// prompt, never the response summary.
 func Parse(reply string) (summary, prompt string, err error) {
 	lines := splitLines(reply)
-	for _, line := range lines {
-		if strings.HasPrefix(line.text, "SUMMARY:") {
-			if summary != "" {
-				return "", "", errors.New("improver response contains multiple SUMMARY lines")
-			}
-			summary = strings.TrimSpace(strings.TrimPrefix(line.text, "SUMMARY:"))
-		}
-	}
-	if summary == "" {
-		return "", "", errors.New("improver response is missing a non-empty SUMMARY line")
-	}
 
-	type fence struct{ contentStart, contentEnd int }
+	// Locate the fenced block first so the summary scan can ignore anything
+	// inside the prompt.
+	type fence struct {
+		openLine, closeLine      int
+		contentStart, contentEnd int
+	}
 	var fences []fence
 	for i := 0; i < len(lines); i++ {
 		if !strings.HasPrefix(lines[i].text, "```") {
@@ -111,7 +117,7 @@ func Parse(reply string) (summary, prompt string, err error) {
 		found := false
 		for j := i + 1; j < len(lines); j++ {
 			if strings.TrimSpace(lines[j].text) == "```" {
-				fences = append(fences, fence{contentStart: start, contentEnd: lines[j].start})
+				fences = append(fences, fence{openLine: i, closeLine: j, contentStart: start, contentEnd: lines[j].start})
 				i = j
 				found = true
 				break
@@ -125,7 +131,39 @@ func Parse(reply string) (summary, prompt string, err error) {
 		return "", "", fmt.Errorf("improver response must contain exactly one fenced block, got %d", len(fences))
 	}
 	f := fences[0]
+
+	for idx, line := range lines {
+		if idx >= f.openLine && idx <= f.closeLine {
+			continue // inside the prompt fence
+		}
+		value, ok := summaryValue(line.text)
+		if !ok {
+			continue
+		}
+		if value == "" {
+			return "", "", errors.New("improver response is missing a non-empty SUMMARY line")
+		}
+		if summary != "" {
+			return "", "", errors.New("improver response contains multiple SUMMARY lines")
+		}
+		summary = value
+	}
+	if summary == "" {
+		return "", "", errors.New("improver response is missing a non-empty SUMMARY line")
+	}
 	return summary, reply[f.contentStart:f.contentEnd], nil
+}
+
+// summaryValue reports whether a line carries the SUMMARY marker, tolerating
+// leading whitespace and surrounding markdown emphasis, and returns the
+// trimmed summary text (which may be empty for a bare marker).
+func summaryValue(line string) (string, bool) {
+	t := strings.TrimLeft(strings.TrimSpace(line), "*_`")
+	rest, ok := strings.CutPrefix(t, "SUMMARY:")
+	if !ok {
+		return "", false
+	}
+	return strings.Trim(strings.TrimSpace(rest), "*_` "), true
 }
 
 type lineSpan struct {
@@ -171,7 +209,14 @@ func Propose(ctx context.Context, nc runner.NewConv, improveMD string, e Evidenc
 			_ = conversation.Close()
 			return "", "", errors.New("improver: conversation must not have tools")
 		}
-		reply, callErr := send(ctx, conversation, bundle, warn)
+		// Fresh conversation each attempt (no chat memory), but a retry carries
+		// the prior parse error forward so the model can correct itself instead
+		// of re-emitting the identical malformed reply.
+		user := bundle
+		if parseErr != nil {
+			user = correction(parseErr) + bundle
+		}
+		reply, callErr := send(ctx, conversation, user, warn)
 		closeErr := conversation.Close()
 		if callErr != nil {
 			return "", "", fmt.Errorf("improver call: %w", callErr)
@@ -184,7 +229,17 @@ func Propose(ctx context.Context, nc runner.NewConv, improveMD string, e Evidenc
 			return summary, prompt, nil
 		}
 	}
-	return "", "", fmt.Errorf("improver response invalid after %d attempts: %w", maxRetries+1, parseErr)
+	return "", "", fmt.Errorf("improver response invalid after %d attempts (%w): %v", maxRetries+1, ErrUnparseable, parseErr)
+}
+
+// correction prefaces a retry bundle with the previous parse failure and a
+// restatement of the required format.
+func correction(parseErr error) string {
+	return fmt.Sprintf("Your previous reply could not be used: %v.\n\n"+
+		"Reply again in the exact required format: a single line beginning `SUMMARY:` "+
+		"with a one-line description of the change, followed by exactly one fenced code "+
+		"block containing the complete replacement prompt and nothing else. Do not add "+
+		"extra fenced blocks and do not place the summary inside the fence.\n\n", parseErr)
 }
 
 func send(ctx context.Context, conversation *agentkit.Conversation, user string, warn runner.WarnFunc) (string, error) {

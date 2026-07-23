@@ -27,7 +27,7 @@ type Workspace struct {
 // Summary contains the final outcome of a run.
 type Summary struct {
 	Baseline, Epsilon, Best float64
-	Accepted                int
+	Accepted, Skipped       int
 	Holdout                 *float64
 	Verdict, StopReason     string
 }
@@ -239,6 +239,7 @@ func (w *Workspace) WriteSummary(s Summary, diff string) error {
 	fmt.Fprintf(&b, "- Best: %s\n", fixedFloat(s.Best))
 	fmt.Fprintf(&b, "- Epsilon: %s\n", fixedFloat(s.Epsilon))
 	fmt.Fprintf(&b, "- Accepted: %d\n", s.Accepted)
+	fmt.Fprintf(&b, "- Skipped: %d\n", s.Skipped)
 	if s.Holdout == nil {
 		b.WriteString("- Holdout: not run\n")
 	} else {

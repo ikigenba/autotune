@@ -58,6 +58,8 @@ func TestParseRequiresSummaryAndExactlyOneFenceAndPreservesContents(t *testing.T
 		"missing summary": "```\nprompt\n```",
 		"missing fence":   "SUMMARY: change\nprompt",
 		"two fences":      "SUMMARY: change\n```\na\n```\n```\nb\n```",
+		"empty summary":   "SUMMARY:\n```\nprompt\n```",
+		"double summary":  "SUMMARY: one\nSUMMARY: two\n```\nprompt\n```",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, _, err := Parse(reply); err == nil {
@@ -65,11 +67,32 @@ func TestParseRequiresSummaryAndExactlyOneFenceAndPreservesContents(t *testing.T
 			}
 		})
 	}
+
+	// Leniency: leading whitespace and markdown emphasis around the marker are
+	// tolerated, and a SUMMARY-looking line inside the fence is prompt content,
+	// never counted as the (or a second) summary.
+	for name, reply := range map[string]string{
+		"bold marker":        "**SUMMARY:** changed examples\n```\nprompt\n```",
+		"italic marker":      "*SUMMARY:* changed examples\n```\nprompt\n```",
+		"underscore marker":  "__SUMMARY:__ changed examples\n```\nprompt\n```",
+		"leading whitespace": "   \tSUMMARY: changed examples\n```\nprompt\n```",
+		"summary in fence":   "SUMMARY: changed examples\n```\nSUMMARY: not this one\nprompt\n```",
+	} {
+		t.Run(name, func(t *testing.T) {
+			summary, _, err := Parse(reply)
+			if err != nil {
+				t.Fatalf("Parse rejected a recoverable reply: %v", err)
+			}
+			if summary != "changed examples" {
+				t.Fatalf("summary = %q, want %q", summary, "changed examples")
+			}
+		})
+	}
 }
 
 // R-RH9C-2YS4
 func TestProposeRetriesMalformedRepliesWithFreshCallsAndExhausts(t *testing.T) {
-	t.Run("retry succeeds", func(t *testing.T) {
+	t.Run("retry succeeds and corrects", func(t *testing.T) {
 		provider := &scriptedProvider{replies: []string{"bad", "SUMMARY: fixed\n```\nnew prompt\n```"}}
 		nc := newConversationFactory(provider)
 		summary, prompt, err := Propose(context.Background(), nc, "improve system", Evidence{}, 1, nil)
@@ -79,12 +102,25 @@ func TestProposeRetriesMalformedRepliesWithFreshCallsAndExhausts(t *testing.T) {
 		if summary != "fixed" || prompt != "new prompt\n" || provider.calls != 2 {
 			t.Fatalf("got summary=%q prompt=%q calls=%d", summary, prompt, provider.calls)
 		}
+		// The retry must be corrective: the second call carries the prior parse
+		// error forward, not a blind identical resend.
+		first := requestText(provider.requests[0])
+		second := requestText(provider.requests[1])
+		if strings.Contains(first, "could not be used") {
+			t.Fatal("first attempt should not carry a correction preamble")
+		}
+		if !strings.Contains(second, "could not be used") || !strings.Contains(second, "SUMMARY") {
+			t.Fatalf("retry did not tell the model what was wrong:\n%s", second)
+		}
 	})
-	t.Run("exhaustion fails", func(t *testing.T) {
+	t.Run("exhaustion yields ErrUnparseable, not a hard error", func(t *testing.T) {
 		provider := &scriptedProvider{replies: []string{"bad", "still bad", "also bad"}}
 		_, _, err := Propose(context.Background(), newConversationFactory(provider), "system", Evidence{}, 2, nil)
 		if err == nil || !strings.Contains(err.Error(), "invalid after 3 attempts") {
 			t.Fatalf("expected exhaustion error, got %v", err)
+		}
+		if !errors.Is(err, ErrUnparseable) {
+			t.Fatalf("exhaustion error is not ErrUnparseable: %v", err)
 		}
 		if provider.calls != 3 {
 			t.Fatalf("calls = %d, want 3", provider.calls)
@@ -150,6 +186,18 @@ func (p *scriptedProvider) RoundTrip(_ context.Context, request *agentkit.Reques
 	}
 	message := agentkit.Message{Role: agentkit.RoleAssistant, Blocks: []agentkit.Block{agentkit.TextBlock{Text: p.replies[index]}}}
 	return agentkit.NewRoundTrip(message, agentkit.FinishStop, agentkit.Usage{}, nil, nil, 0, false)
+}
+
+func requestText(request *agentkit.Request) string {
+	var b strings.Builder
+	for _, message := range request.Messages {
+		for _, block := range message.Blocks {
+			if text, ok := block.(agentkit.TextBlock); ok {
+				b.WriteString(text.Text)
+			}
+		}
+	}
+	return b.String()
 }
 
 func newConversationFactory(provider agentkit.Provider) runner.NewConv {

@@ -54,13 +54,19 @@ func (s *healthStore) AppendHistory(line string) error {
 		return err
 	}
 	verdict := "reject"
-	if strings.Contains(line, "accepted=true") {
+	switch {
+	case strings.Contains(line, "skipped=true"):
+		verdict = "skip"
+	case strings.Contains(line, "accepted=true"):
 		verdict = "ACCEPT"
 	}
 	if s.color {
-		if verdict == "ACCEPT" {
+		switch verdict {
+		case "ACCEPT":
 			verdict = "\x1b[32mACCEPT\x1b[0m"
-		} else {
+		case "skip":
+			verdict = "\x1b[33mskip\x1b[0m"
+		default:
 			verdict = "\x1b[31mreject\x1b[0m"
 		}
 	}

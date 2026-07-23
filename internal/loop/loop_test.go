@@ -284,6 +284,105 @@ func TestRunDeduplicatesAllProviderWarningCodesToErr(t *testing.T) {
 	}
 }
 
+func TestRunSkipsUnparseableImproverReplyAndContinues(t *testing.T) {
+	// R-SKPC-4XN1 — an improver reply that never parses skips its iteration
+	// (recorded, counted against the rails) and the loop keeps going, ending
+	// via a normal rail rather than aborting with an internal failure.
+	h := newHarness(
+		[]reply{{text: "0.5"}, {text: "0.4"}}, // baseline, then the second-iteration candidate
+		[]reply{{text: "garbage"}, {text: "still garbage"}, proposal("second try", "candidate")},
+	)
+	out, code := h.run(context.Background(), Options{Repeat: 1, MaxRetries: 1, Rails: Rails{MaxIterations: 2}})
+
+	if code != ExitBudget || out.StopReason != "max iterations" {
+		t.Fatalf("outcome = %+v, code = %d; want the run to end via the rail, not abort", out, code)
+	}
+	if out.Skipped != 1 || out.Accepted != 0 {
+		t.Fatalf("skipped = %d, accepted = %d; want one skip and no accepts", out.Skipped, out.Accepted)
+	}
+	if h.improver.callsCount() != 3 || h.runner.callsCount() != 2 {
+		t.Fatalf("calls = improver %d, runner %d; want 2 failed + 1 good improver call and baseline + one candidate eval", h.improver.callsCount(), h.runner.callsCount())
+	}
+	if !containsLine(h.store.history, "skipped=true") {
+		t.Fatalf("skip was not recorded in history: %v", h.store.history)
+	}
+	if !strings.Contains(h.errOutput.String(), "invalid after 2 attempts") {
+		t.Fatalf("skip cause not surfaced on stderr: %q", h.errOutput.String())
+	}
+	if h.store.summary == nil || h.store.summary.Skipped != 1 {
+		t.Fatalf("final summary did not record the skip: %+v", h.store.summary)
+	}
+}
+
+func TestRunStopsWhenImproverIsPersistentlyUnusable(t *testing.T) {
+	// R-SKPU-8QR2 — with no rails set, a run of consecutive unparseable replies
+	// is genuinely unrecoverable and stops with ExitFailure, rather than
+	// skipping forever and burning the budget.
+	var improverReplies []reply
+	for i := 0; i < 2*maxConsecutiveSkips; i++ {
+		improverReplies = append(improverReplies, reply{text: "garbage"})
+	}
+	h := newHarness([]reply{{text: "0.5"}}, improverReplies)
+
+	out, code := h.run(context.Background(), Options{Repeat: 1, MaxRetries: 1})
+
+	if code != ExitFailure || out.StopReason != "improver unrecoverable" {
+		t.Fatalf("outcome = %+v, code = %d; want unrecoverable stop", out, code)
+	}
+	if out.Skipped != maxConsecutiveSkips {
+		t.Fatalf("skipped = %d, want %d", out.Skipped, maxConsecutiveSkips)
+	}
+	if h.improver.callsCount() != 2*maxConsecutiveSkips {
+		t.Fatalf("improver calls = %d, want %d", h.improver.callsCount(), 2*maxConsecutiveSkips)
+	}
+	if !strings.Contains(h.errOutput.String(), "consecutive") {
+		t.Fatalf("unrecoverable cause not surfaced on stderr: %q", h.errOutput.String())
+	}
+	if h.store.summary == nil || h.store.summary.StopReason != "improver unrecoverable" {
+		t.Fatalf("finalize did not run for the unrecoverable stop: %+v", h.store.summary)
+	}
+}
+
+func TestFinalReportAlwaysEndsWithStopLine(t *testing.T) {
+	// R-FNST-6LM3 — the final report terminates with a `stop:` line on both the
+	// accepted-winner and no-improvement paths; the winner diff is never the
+	// last thing printed.
+	t.Run("accepted winner", func(t *testing.T) {
+		h := newHarness([]reply{{text: "0.5"}, {text: "1"}}, []reply{proposal("win", "winner")})
+		h.folder.Holdout = nil
+		out, code := h.run(context.Background(), Options{Repeat: 1, Rails: Rails{MaxIterations: 1}})
+		if code != ExitBudget || out.Accepted != 1 {
+			t.Fatalf("outcome = %+v, code = %d", out, code)
+		}
+		report := h.output.String()
+		stop := strings.LastIndex(report, "stop: max iterations")
+		diff := strings.Index(report, "--- prompt.txt")
+		if stop < 0 || diff < 0 || stop < diff {
+			t.Fatalf("report must print the diff then terminate with a stop line:\n%s", report)
+		}
+		if !strings.HasSuffix(strings.TrimRight(report, "\n"), "stop: max iterations") {
+			t.Fatalf("report does not end with the stop line:\n%s", report)
+		}
+	})
+	t.Run("no improvement", func(t *testing.T) {
+		h := newHarness([]reply{{text: "1"}}, nil)
+		h.run(context.Background(), Options{Repeat: 1})
+		report := h.output.String()
+		if !strings.Contains(report, "no improvement found") || !strings.Contains(report, "stop: perfect score") {
+			t.Fatalf("no-improvement report missing stop line:\n%s", report)
+		}
+	})
+}
+
+func containsLine(lines []string, substr string) bool {
+	for _, line := range lines {
+		if strings.Contains(line, substr) {
+			return true
+		}
+	}
+	return false
+}
+
 type harness struct {
 	deps      Deps
 	folder    *folder.Folder
@@ -389,6 +488,7 @@ type fakeStore struct {
 	baselineComposites []float64
 	candidates         []*runner.EvalResult
 	promoted           []int
+	history            []string
 	summary            *workspace.Summary
 	diff               string
 	writeCandidateErr  error
@@ -410,7 +510,10 @@ func (s *fakeStore) PromoteBest(n int) error {
 	s.promoted = append(s.promoted, n)
 	return nil
 }
-func (s *fakeStore) AppendHistory(string) error { return nil }
+func (s *fakeStore) AppendHistory(line string) error {
+	s.history = append(s.history, line)
+	return nil
+}
 func (s *fakeStore) WriteSummary(summary workspace.Summary, diff string) error {
 	s.summary = &summary
 	s.diff = diff
