@@ -9,5 +9,3 @@ line and body file — there is no done marker; done is gone. No bare status
 glyph appears outside phase lines.
 
 Next phase: 12
-
-- Phase 11 ⬜ realizes R-9A0E-BG7N, R-9B8A-P7YC — version stamping, release tooling (Makefile/goreleaser/workflow/install.sh), and README install path
