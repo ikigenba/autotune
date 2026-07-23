@@ -15,14 +15,13 @@ import (
 	"github.com/ikigenba/autotune/internal/workspace"
 )
 
-const Version = "autotune dev"
-
 type Deps struct {
 	Stdout, Stderr io.Writer
 	Getenv         func(string) string
 	Now            func() time.Time
 	Home           string
 	IsTTY          bool
+	Version        string
 	NewProvider    config.ProviderFactory
 }
 
@@ -38,7 +37,7 @@ func Run(ctx context.Context, deps Deps, args []string) int {
 		return cli.Done.ExitCode()
 	}
 	if opts.Version {
-		fmt.Fprintln(deps.Stdout, Version)
+		fmt.Fprintln(deps.Stdout, deps.Version)
 		return cli.Done.ExitCode()
 	}
 	if opts.Init {

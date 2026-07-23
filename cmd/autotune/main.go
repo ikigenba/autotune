@@ -12,6 +12,8 @@ import (
 	"github.com/ikigenba/autotune/internal/config"
 )
 
+var version = "dev"
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -22,12 +24,13 @@ func main() {
 		isTTY = info.Mode()&os.ModeCharDevice != 0
 	}
 	os.Exit(app.Run(ctx, app.Deps{
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-		Getenv: os.Getenv,
-		Now:    time.Now,
-		Home:   home,
-		IsTTY:  isTTY,
+		Stdout:  os.Stdout,
+		Stderr:  os.Stderr,
+		Getenv:  os.Getenv,
+		Now:     time.Now,
+		Home:    home,
+		IsTTY:   isTTY,
+		Version: version,
 		NewProvider: func(section config.Section, system string) (*agentkit.Conversation, error) {
 			return section.Conversation(system)
 		},

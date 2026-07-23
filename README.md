@@ -10,14 +10,22 @@ winner generalizes or merely overfit. Your starting prompt is never modified;
 every candidate, score, and a final diff land in a run folder inside the tune
 folder, and you adopt the winner deliberately.
 
-## Build and install
+## Install
 
-Requires Go.
+Install the latest release:
 
+```sh
+curl -fsSL https://raw.githubusercontent.com/ikigenba/autotune/main/install.sh | sh
 ```
-make build      # compile
-make test       # run tests
-make install    # build and install to ~/.local/bin/autotune
+
+Set `BINDIR` to choose the exact destination directory, or set `PREFIX` to
+install under `$PREFIX/bin` instead of `~/.local/bin`. Set `AUTOTUNE_VERSION`
+to a tag such as `v0.1.0` to install a specific release.
+
+To build and install from source (requires Go):
+
+```sh
+make install
 ```
 
 ## Run the example
